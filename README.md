@@ -10,7 +10,7 @@ The system comprises a several Python scripts (`loadingunloading.py`, `balance.p
 
 ### `loadingunloading.py`
 
-- **Functionality**: This script manages the loading and unloading of containers. It includes features to track container status, update records, and optimize the loading/unloading operations using A* search algorithm which uses heuristic search.
+- **Functionality**: This script manages the loading and unloading of containers. It includes features to track container status, update records, and optimize the loading/unloading operations using A* search algorithm which uses heuristic cost search.
 - **How to Use**: Execute this script to start the process. Input the required data as prompted, and the script will handle the rest, ensuring accurate and efficient container management.
 
 ### `manifest_outbound`
