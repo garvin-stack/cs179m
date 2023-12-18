@@ -132,8 +132,7 @@ class balance:
                 continue
             if balance_object.layout[balance_object.find_highest_container(i)][i] == 'X':
                 continue
-            if balance_object.layout[balance_object.find_highest_container(i)][i] == 0 or \
-                    balance_object.layout[balance_object.find_highest_container(i)][i] == '0':
+            if balance_object.layout[balance_object.find_highest_container(i)][i] == 0 or balance_object.layout[balance_object.find_highest_container(i)][i] == '0':
                 continue
 
             for j in range(0, cols, 1):
@@ -144,8 +143,7 @@ class balance:
                 next_highest_container_row = copy_object.find_highest_container(j)
                 if next_highest_container_row == rows - 1:
                     continue
-                copy_object.layout[next_highest_container_row + 1][j] = \
-                    copy_object.layout[highest_container_row][i]
+                copy_object.layout[next_highest_container_row + 1][j] = copy_object.layout[highest_container_row][i]
 
                 copy_object.layout[highest_container_row][i] = 0
                 copy_object.initial_row = highest_container_row
