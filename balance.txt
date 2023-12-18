@@ -1,0 +1,326 @@
+import os, copy, queue
+from queue import PriorityQueue
+from datetime import datetime
+from tkinter import *
+
+class Container:
+    # REPRESENTATION
+    def __init__(self, xPos, yPos, weight, name):
+        self.xPos   = xPos  #row
+        self.yPos   = yPos  #column
+        self.weight = weight
+        self.name   = name
+
+    # OPERATORS
+    def get_dist(self, xPos_new, yPos_new):
+        return (abs(xPos_new - self.xPos) + abs(yPos_new - self.yPos))
+
+    def get_index(self):
+        return (self.yPos -1) + ((self.xPos - 1) * 12)
+
+    # OUTPUT
+    # Used for outputting to new Manifest.
+    def __repr__(self) -> str:
+        ret_str =   ('['+(str(self.xPos).zfill(2))
+                    +','+(str(self.yPos).zfill(2))+']'+", "
+                    +'{'+(str(self.weight).zfill(5))+'}'+", "
+                    +self.name)
+        return ret_str
+    
+class Ship:
+    # REPRESENTATION
+    def __init__(self, width, height, grid, bay):
+        self.width  = width
+        self.height = height
+        self.grid   = grid
+        self.bay    = bay
+
+    # OPERATORS
+    # Where definitions for move, balance, and swap containers operators go.
+    def swap(self, x_1, y_1, x_2, y_2):
+        index_1 = (y_1 - 1) + ((x_1 -1) * 12)
+        index_2 = (y_2 - 1) + ((x_2 -1) * 12)
+
+        tmp_container = copy.deepcopy(self.grid[index_1])
+        self.grid[index_1] = self.grid[index_2]
+        self.grid[index_1].xPos = x_1
+        self.grid[index_1].yPos = y_1
+
+        self.grid[index_2] = tmp_container
+        self.grid[index_2].xPos = x_2
+        self.grid[index_2].yPos = y_2
+
+    def __repr__(self):
+        ret_str = ''
+        for y in range(self.height - 1, -1, -1):
+            for x in range(0, self.width):
+                index = x + (y*12)
+                curr_container = self.grid[index]
+                if (curr_container.name == 'NAN'):
+                    ret_str += '█ '
+                elif (curr_container.name == 'UNUSED'):
+                    ret_str += '- '
+                else:
+                    ret_str += ((curr_container.name[0]) + ' ')
+
+                pass
+            if (y != 0):
+                ret_str += '\n'
+        return ret_str
+    
+def loadManifest(manifest_file_path):
+    #path = input("Manifest File Path:")
+    f           = open(manifest_file_path, "r")
+    lines       = f.readlines()
+
+    bay         = []
+    grid        = []
+
+    for line in lines:
+        temp = line.split(", ")
+        pos_str = temp[0].strip("[]").split(",")
+        xPos = int(pos_str[0])
+        yPos = int(pos_str[1])
+        weight = int(temp[1].strip("{}"))
+        name = temp[2].strip("\n")
+        container = Container(xPos, yPos, weight, name)
+
+        if name != "NAN" and name != "UNUSED":
+            bay.append(container)
+
+        # print(xPos, yPos, weight, name)
+        grid.append(container)  # index = (xPos-1)*12+(yPos-1)
+
+    ret_ship    = Ship(12, 8, grid, bay)
+    f.close()
+    temp = "Manifest " + manifest_file_path + " is opened, there are " + str(len(bay)) + " containers on the ship.\n"
+    return ret_ship
+
+
+class BalanceNode:
+    def __init__(self, ship=None, parent=None, children=[], operation='Start balancing', cost=0, estimated_time = 0, depth=0):
+        self.ship           = ship
+        self.parent         = parent
+        self.children       = children
+        self.operation      = operation
+        self.cost           = cost
+        self.estimated_time = estimated_time
+        self.depth          = depth
+        self.grid = ship.grid
+        
+    # Get mass on left-hand side of the ship.
+    def get_port_mass(self):
+        port_mass = 0
+        for y in range(0, self.ship.height):
+            for x in range (0, int(self.ship.width/2)):
+                index = x + (y*12)
+                curr_container = self.ship.grid[index]
+                port_mass += curr_container.weight
+        return port_mass
+
+    # Get mass on right-hand side of the ship.
+    def get_starboard_mass(self):
+        starboard_mass = 0
+        for y in range(0, self.ship.height):
+            for x in range (int(self.ship.width/2), self.ship.width):
+                index = x + (y*12)
+                curr_container = self.ship.grid[index]
+                starboard_mass += curr_container.weight
+        return starboard_mass
+
+    # Get containers on left-hand side of the ship.
+    def get_port_containers(self):
+        port_containers = []
+        for y in range(0, self.ship.height):
+            for x in range (0, int(self.ship.width/2)):
+                index = x + (y*12)
+                curr_container = self.ship.grid[index]
+                if ((curr_container.name != 'NAN') and (curr_container.name != 'UNUSED')):
+                    port_containers.append(curr_container.name)
+        return sorted(port_containers)
+
+    # Get containers on right-hand side of the ship.
+    def get_starboard_containers(self):
+        starboard_containers = []
+        for y in range(0, self.ship.height):
+            for x in range (int(self.ship.width/2), self.ship.width):
+                index = x + (y*12)
+                curr_container = self.ship.grid[index]
+                if ((curr_container.name != 'NAN') and (curr_container.name != 'UNUSED')):
+                    starboard_containers.append(curr_container.name)
+        return sorted(starboard_containers)
+
+    # Return all valid positions to move a container to.
+    def available_spots(self, selected_container):
+        arr_available_spots = []
+        for x in range(self.ship.width):
+            y = 0
+            curr_index = x + (y*12)
+            while((self.ship.grid[curr_index].name != "UNUSED") and (y < self.ship.height)):
+                y += 1
+                if (y != self.ship.height):
+                    curr_index = x + (y*12)
+            available_spot = self.ship.grid[curr_index]
+
+            if ((available_spot.name == "UNUSED") and (selected_container.yPos != available_spot.yPos)):
+                arr_available_spots.append(available_spot)
+        return arr_available_spots
+    
+    # Return containers at the top of each column, if any.
+    def accessable_containers(self):
+        arr_accessable_containers = []
+        for x in range(self.ship.width): 
+            y = 0
+            curr_index = x + (y*12)
+            curr_container = self.ship.grid[curr_index]
+            while((curr_container.name != "UNUSED") and (y < (self.ship.height - 1))):
+                if (self.ship.grid[x + ((y+1) * 12)].name != "UNUSED"):
+                    y += 1
+                    if (y != self.ship.height):
+                        curr_index = x + (y*12)
+                    curr_container = self.ship.grid[curr_index]
+                else:
+                    break
+            if (curr_container.name != "UNUSED" and curr_container.name != "NAN"):
+                arr_accessable_containers.append(curr_container)
+        return arr_accessable_containers
+
+    def expand(self, selected_container):
+        arr_available_spots         = self.available_spots(selected_container)
+        init_balance_offset         = abs(self.get_port_mass() - self.get_starboard_mass())
+
+        x_1 = selected_container.xPos
+        y_1 = selected_container.yPos
+
+        attempted_nodes     = []
+        attempted_weights   = []
+        attempted_distances = []
+
+        for spot in arr_available_spots:
+            x_2 = spot.xPos
+            y_2 = spot.yPos
+
+            child = BalanceNode(copy.deepcopy(self.ship))
+            child.parent = self
+            child.ship.swap(x_1, y_1, x_2, y_2)
+            child.operation         =   ("Move Container \'"
+                                        + selected_container.name
+                                        +"\' at ["+str(x_1).zfill(2)+","+str(y_1).zfill(2)
+                                        +"] to ["
+                                        +str(x_2).zfill(2)+","+str(y_2).zfill(2)+"]")
+            distance_heursitic      = selected_container.get_dist(x_2, y_2)
+            balance_heuristic       = abs(child.get_port_mass() - child.get_starboard_mass())
+            child.cost              = distance_heursitic + balance_heuristic
+            child.depth             = self.depth + 1
+            child.estimated_time    = distance_heursitic
+
+            if (balance_heuristic != init_balance_offset):
+                attempted_nodes.append(child)
+                attempted_distances.append(distance_heursitic)
+                attempted_weights.append(balance_heuristic)       
+        
+        expanded_nodes = select_best_balance_children(  attempted_weights, 
+                                                        list(set(attempted_weights)), 
+                                                        attempted_distances, 
+                                                        attempted_nodes)        
+        self.children = expanded_nodes
+        return expanded_nodes
+    
+    def balance_goal_test(self):
+        if (len(self.ship.bay) == 0):
+            return True
+        elif((self.get_port_mass() >= (self.get_starboard_mass() * 0.9)) and
+                (self.get_port_mass() <= (self.get_starboard_mass() * 1.1))):
+                return True
+        return False
+    
+    def __lt__(self, other):
+        return self.cost < other.cost
+
+def select_best_balance_children(weights, unique_weights, attempted_distances, attempted_nodes):
+    best_nodes = []
+    for weight in unique_weights:
+            indicies = []
+            for idx, value in enumerate(weights):
+                if value == weight:
+                    indicies.append(idx)
+            curr_distances = []
+            curr_min_distance = 99999
+            curr_min_idx = -1
+            for idx in indicies:
+                if attempted_distances[idx] < curr_min_distance:
+                    curr_min_distance = attempted_distances[idx]
+                    curr_min_idx = idx
+            best_nodes.append(attempted_nodes[curr_min_idx])
+    return best_nodes
+
+def traceback_solution(terminal_node):
+    traceback_queue = queue.LifoQueue()
+    ret_node_path   = []
+
+    curr_node = terminal_node
+    traceback_queue.put(curr_node)
+    while(curr_node.parent != None):
+        traceback_queue.put(curr_node.parent)
+        curr_node = curr_node.parent
+
+    while(traceback_queue.empty() == False):
+        curr_node = traceback_queue.get()
+        print(curr_node.ship)
+        print(curr_node.operation)
+        print('')
+        ret_node_path.append(curr_node)
+
+    return ret_node_path
+
+def balance_ship(init_ship_state):
+    node            = BalanceNode(init_ship_state)
+    frontier        = PriorityQueue()
+    explored        = []
+    max_queue_size  = 0
+    expand_count    = 0
+    max_depth       = 0
+
+    frontier.put(node)
+    while (frontier.qsize() > 0):
+        if (frontier.empty()):
+            print("ERROR: Failure.")
+            return False
+        node = frontier.get()
+        if (node.balance_goal_test()):
+            return traceback_solution(node)
+        
+        to_explored = []
+        to_explored.append(node.get_port_containers())
+        to_explored.append(node.get_starboard_containers())
+
+        explored.append(to_explored)
+        arr_accessable_containers   = node.accessable_containers()
+        # Expand node and get children.
+        node_children = []
+
+        for container in arr_accessable_containers:
+            node_children += node.expand(container)
+
+        expand_count    += 1
+        max_queue_size  = max(max_queue_size, frontier.qsize())
+        max_depth       = max(max_depth, node.depth)
+
+        # Check if children already explored
+        # If not explored, put into frontier.
+        for child_node in node_children:
+            to_explored = []
+            to_explored.append(child_node.get_port_containers())
+            to_explored.append(child_node.get_starboard_containers())
+
+            state_found = False
+            for state in explored:
+                if ((state[0] == to_explored[0]) and (state[1] == to_explored[1])):
+                    state_found = True
+            if (state_found == False):
+                frontier.put(child_node)
+            else:
+                pass
+    return
+
+#SIFT still needs to be implemented
